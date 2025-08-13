@@ -4,15 +4,8 @@ A CLI tool for sorting CSV files with user input.
 
 ## Usage
 
-### Add a new row
+Make sure to create or locate a csv file to work with and check if it contains a header as the first row. Then run the following command:
 
+```bash
+python whimsort.py
 ```
-./whimsort.py <file_path> add <row_content>
-```
-
-### Reorder all rows
-
-```
-./whimsort.py <file_path> reorder
-```
-> If your csv's top row is a header, append `--header` at the end of the commands above.
