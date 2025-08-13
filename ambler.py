@@ -1,8 +1,12 @@
-import asyncio
+from typing import TypeVar, Tuple, Callable, Optional, Awaitable
 
-async def amble(state, node, step):
+S = TypeVar('S')
+L = TypeVar('L')
+
+
+async def amble(state: S, lead: L, follow: Callable[[L, S], Awaitable[Tuple[S, Optional[L]]]]) -> S:
     current_state = state
-    current_node = node
-    while current_node is not None:
-        current_state, current_node = await step(current_state, current_node)
-    return current_state, None
+    current_lead = lead
+    while current_lead is not None:
+        current_state, current_lead = await follow(current_lead, current_state)
+    return current_state

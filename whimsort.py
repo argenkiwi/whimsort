@@ -1,16 +1,18 @@
 import asyncio
 import csv
+from enum import Enum, auto
+
 from ambler import amble
 
-class Node:
-    GET_CSV_PATH = 1
-    HAS_HEADER = 2
-    CHOOSE_ACTION = 3
-    GET_NEW_ROW = 4
-    SORT_ROW = 5
-    REORDER_ROWS = 6
-    SAVE_FILE = 7
-    END = 8
+class Node(Enum):
+    GET_CSV_PATH = auto()
+    HAS_HEADER = auto()
+    CHOOSE_ACTION = auto()
+    GET_NEW_ROW = auto()
+    SORT_ROW = auto()
+    REORDER_ROWS = auto()
+    SAVE_FILE = auto()
+    END = auto()
 
 def get_csv_path(state):
     """Gets the path to the CSV file from the user."""
@@ -126,7 +128,7 @@ def save_file(state):
     print(f"File saved to {state['csv_path']}")
     return state, Node.END
 
-async def direct(state, node):
+async def direct(node, state):
     if node == Node.GET_CSV_PATH:
         return get_csv_path(state)
     elif node == Node.HAS_HEADER:
@@ -155,6 +157,7 @@ async def main():
         "data": [],
         "header": None,
     }
+    
     await amble(initial_state, Node.GET_CSV_PATH, direct)
 
 if __name__ == "__main__":
