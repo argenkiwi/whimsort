@@ -1,6 +1,7 @@
 import asyncio
 import csv
 from enum import Enum, auto
+import inquirer
 
 from ambler import amble
 
@@ -8,6 +9,7 @@ class Node(Enum):
     GET_CSV_PATH = auto()
     HAS_HEADER = auto()
     CHOOSE_ACTION = auto()
+    LIST_ROWS = auto()
     GET_NEW_ROW = auto()
     SORT_ROW = auto()
     REORDER_ROWS = auto()
@@ -37,12 +39,31 @@ def has_header(state):
 
 def choose_action(state):
     """Asks the user whether they want to add a new row or reorder the file."""
-    response = input("Do you want to 'add' a new row or 'reorder' the file?: ").lower()
+    questions = [
+        inquirer.List(
+            'action',
+            message="What do you want to do?",
+            choices=['add', 'reorder', 'list', 'quit'],
+        ),
+    ]
+    answers = inquirer.prompt(questions)
+    response = answers['action']
+
     state['action'] = response
     if response == 'add':
         return state, Node.GET_NEW_ROW
-    else:
+    elif response == 'reorder':
         return state, Node.REORDER_ROWS
+    elif response == 'list':
+        return state, Node.LIST_ROWS
+    else:
+        return state, Node.END
+
+def list_rows(state):
+    """Lists the current rows in the file."""
+    for row in state['data']:
+        print(row)
+    return state, Node.CHOOSE_ACTION
 
 def get_new_row(state):
     """Gets the new row from the user."""
@@ -56,9 +77,9 @@ def compare_rows(row1, row2):
     while True:
         choice = input("Enter 1 or 2: ")
         if choice == '1':
-            return 1  # row1 is greater
+            return -1  # row1 is greater
         elif choice == '2':
-            return -1 # row2 is greater
+            return 1 # row2 is greater
         else:
             print("Invalid input. Please enter 1 or 2.")
 
@@ -73,17 +94,16 @@ def sort_row(state):
 
     low = 0
     high = len(data) - 1
-    insert_index = 0
+    insert_index = len(data)
 
     while low <= high:
         mid = (low + high) // 2
         comparison = compare_rows(new_row, data[mid])
-        if comparison == 1:  # new_row is greater than data[mid], so new_row should be placed before data[mid]
+        if comparison == -1:  # new_row is greater than data[mid], so new_row should be placed before data[mid]
             high = mid - 1
             insert_index = mid
         else:  # new_row is less than or equal to data[mid], so new_row should be placed after data[mid]
             low = mid + 1
-            insert_index = low
 
     data.insert(insert_index, new_row)
     state['data'] = data
@@ -101,17 +121,16 @@ def reorder_rows(state):
 
         low = 0
         high = len(sorted_data) - 1
-        insert_index = 0
+        insert_index = len(sorted_data)
 
         while low <= high:
             mid = (low + high) // 2
             comparison = compare_rows(new_row, sorted_data[mid])
-            if comparison == 1:  # new_row is greater than sorted_data[mid], so new_row should be placed before sorted_data[mid]
+            if comparison == -1:  # new_row is greater than sorted_data[mid], so new_row should be placed before sorted_data[mid]
                 high = mid - 1
                 insert_index = mid
-            else:  # new_row is less than or equal to sorted_data[mid], so new_row should be placed after sorted_data[mid]
+            else:  # new_row is less than or equal to sorted_data[mid], so new_row should be placed after data[mid]
                 low = mid + 1
-                insert_index = low
 
         sorted_data.insert(insert_index, new_row)
 
@@ -126,7 +145,7 @@ def save_file(state):
             writer.writerow(state['header'])
         writer.writerows(state['data'])
     print(f"File saved to {state['csv_path']}")
-    return state, Node.END
+    return state, Node.CHOOSE_ACTION
 
 async def direct(node, state):
     if node == Node.GET_CSV_PATH:
@@ -135,6 +154,8 @@ async def direct(node, state):
         return has_header(state)
     elif node == Node.CHOOSE_ACTION:
         return choose_action(state)
+    elif node == Node.LIST_ROWS:
+        return list_rows(state)
     elif node == Node.GET_NEW_ROW:
         return get_new_row(state)
     elif node == Node.SORT_ROW:
