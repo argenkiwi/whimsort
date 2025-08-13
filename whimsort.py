@@ -1,112 +1,161 @@
-#!/usr/bin/env python3
-
-import argparse
+import asyncio
 import csv
-import sys
+from ambler import amble
 
-def get_user_comparison(item1, item2, header=None):
-    """Prompts the user to compare two items."""
+class Node:
+    GET_CSV_PATH = 1
+    HAS_HEADER = 2
+    CHOOSE_ACTION = 3
+    GET_NEW_ROW = 4
+    SORT_ROW = 5
+    REORDER_ROWS = 6
+    SAVE_FILE = 7
+    END = 8
+
+def get_csv_path(state):
+    """Gets the path to the CSV file from the user."""
+    csv_path = input("Enter the path to the CSV file: ")
+    state['csv_path'] = csv_path
+    return state, Node.HAS_HEADER
+
+def read_csv(state):
+    """Reads the CSV file and populates the state."""
+    with open(state['csv_path'], 'r') as f:
+        reader = csv.reader(f)
+        if state['has_header']:
+            state['header'] = next(reader)
+        state['data'] = list(reader)
+
+def has_header(state):
+    """Asks the user if the CSV file has a header."""
+    response = input("Does the CSV file have a header? (y/n): ").lower()
+    state['has_header'] = response == 'y'
+    read_csv(state)
+    return state, Node.CHOOSE_ACTION
+
+def choose_action(state):
+    """Asks the user whether they want to add a new row or reorder the file."""
+    response = input("Do you want to 'add' a new row or 'reorder' the file?: ").lower()
+    state['action'] = response
+    if response == 'add':
+        return state, Node.GET_NEW_ROW
+    else:
+        return state, Node.REORDER_ROWS
+
+def get_new_row(state):
+    """Gets the new row from the user."""
+    new_row_str = input("Enter the new row (comma-separated values): ")
+    state['new_row'] = new_row_str.split(',')
+    return state, Node.SORT_ROW
+
+def compare_rows(row1, row2):
+    """Asks the user to compare two rows."""
+    print(f"Which row is 'greater'?\n1: {row1}\n2: {row2}")
     while True:
-        print("\nWhich item should be higher in the list?")
-        if header:
-            print(f"Header: {header}")
-        print(f"1: {item1}")
-        print(f"2: {item2}")
-        choice = input("Enter 1 or 2: ").strip()
-        if choice in ('1', '2'):
-            return int(choice)
-        print("Invalid input. Please enter 1 or 2.")
-
-def binary_insert(sorted_list, item, compare_func):
-    """Inserts an item into a sorted list using binary insertion."""
-    low = 0
-    high = len(sorted_list)
-
-    while low < high:
-        mid = (low + high) // 2
-        comparison = compare_func(item, sorted_list[mid])
-        if comparison == 1:
-            high = mid
+        choice = input("Enter 1 or 2: ")
+        if choice == '1':
+            return 1  # row1 is greater
+        elif choice == '2':
+            return -1 # row2 is greater
         else:
-            low = mid + 1
-    
-    sorted_list.insert(low, item)
+            print("Invalid input. Please enter 1 or 2.")
 
-def read_csv(file_path):
-    """Reads a CSV file and returns a list of rows."""
-    try:
-        with open(file_path, 'r', newline='') as csvfile:
-            return list(csv.reader(csvfile))
-    except FileNotFoundError:
-        return []
+def sort_row(state):
+    """Sorts a new row into the existing data using binary insertion."""
+    new_row = state['new_row']
+    data = state['data']
 
-def write_csv(file_path, data):
-    """Writes data to a CSV file."""
-    with open(file_path, 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerows(data)
-
-def add_row(file_path, new_row, has_header):
-    """Adds a new row to the CSV file using binary insertion."""
-    data = read_csv(file_path)
-    header = None
-    if has_header:
-        header = data.pop(0)
-    
-    compare = lambda item1, item2: get_user_comparison(item1, item2, header)
-    
-    binary_insert(data, new_row, compare)
-    if header:
-        data.insert(0, header)
-    write_csv(file_path, data)
-    print(f"\nAdded new row: {new_row}")
-
-def reorder_rows(file_path, has_header):
-    """Reorders all rows in the CSV file."""
-    data = read_csv(file_path)
     if not data:
-        print("CSV file is empty. Nothing to reorder.")
-        return
+        data.append(new_row)
+        return state, Node.SAVE_FILE
 
-    header = None
-    if has_header:
-        header = data.pop(0)
+    low = 0
+    high = len(data) - 1
+    insert_index = 0
 
-    reordered_data = []
-    for row in data:
-        if not reordered_data:
-            reordered_data.append(row)
-        else:
-            compare = lambda item1, item2: get_user_comparison(item1, item2, header)
-            binary_insert(reordered_data, row, compare)
+    while low <= high:
+        mid = (low + high) // 2
+        comparison = compare_rows(new_row, data[mid])
+        if comparison == 1:  # new_row is greater than data[mid], so new_row should be placed before data[mid]
+            high = mid - 1
+            insert_index = mid
+        else:  # new_row is less than or equal to data[mid], so new_row should be placed after data[mid]
+            low = mid + 1
+            insert_index = low
 
-    if header:
-        reordered_data.insert(0, header)
-    write_csv(file_path, reordered_data)
-    print("\nCSV file has been reordered.")
+    data.insert(insert_index, new_row)
+    state['data'] = data
+    return state, Node.SAVE_FILE
 
-def main():
-    """Main function to handle command-line arguments."""
-    parser = argparse.ArgumentParser(description="A CLI tool for sorting CSV files with user input.")
-    parser.add_argument("file_path", help="Path to the CSV file.")
+def reorder_rows(state):
+    """Reorders the entire CSV file using binary insertion."""
+    original_data = state['data']
+    sorted_data = []
 
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    for new_row in original_data:
+        if not sorted_data:
+            sorted_data.append(new_row)
+            continue
 
-    # 'add' command
-    add_parser = subparsers.add_parser("add", help="Add a new row to the CSV file.")
-    add_parser.add_argument("row", nargs='+', help="The content of the new row.")
-    add_parser.add_argument("--header", action="store_true", help="Treat the first row as a header.")
+        low = 0
+        high = len(sorted_data) - 1
+        insert_index = 0
 
-    # 'reorder' command
-    reorder_parser = subparsers.add_parser("reorder", help="Reorder all rows in the CSV file.")
-    reorder_parser.add_argument("--header", action="store_true", help="Treat the first row as a header.")
+        while low <= high:
+            mid = (low + high) // 2
+            comparison = compare_rows(new_row, sorted_data[mid])
+            if comparison == 1:  # new_row is greater than sorted_data[mid], so new_row should be placed before sorted_data[mid]
+                high = mid - 1
+                insert_index = mid
+            else:  # new_row is less than or equal to sorted_data[mid], so new_row should be placed after sorted_data[mid]
+                low = mid + 1
+                insert_index = low
 
-    args = parser.parse_args()
+        sorted_data.insert(insert_index, new_row)
 
-    if args.command == "add":
-        add_row(args.file_path, args.row, args.header)
-    elif args.command == "reorder":
-        reorder_rows(args.file_path, args.header)
+    state['data'] = sorted_data
+    return state, Node.SAVE_FILE
+
+def save_file(state):
+    """Saves the modified data back to the CSV file."""
+    with open(state['csv_path'], 'w', newline='') as f:
+        writer = csv.writer(f)
+        if state['has_header'] and state['header']:
+            writer.writerow(state['header'])
+        writer.writerows(state['data'])
+    print(f"File saved to {state['csv_path']}")
+    return state, Node.END
+
+async def direct(state, node):
+    if node == Node.GET_CSV_PATH:
+        return get_csv_path(state)
+    elif node == Node.HAS_HEADER:
+        return has_header(state)
+    elif node == Node.CHOOSE_ACTION:
+        return choose_action(state)
+    elif node == Node.GET_NEW_ROW:
+        return get_new_row(state)
+    elif node == Node.SORT_ROW:
+        return sort_row(state)
+    elif node == Node.REORDER_ROWS:
+        return reorder_rows(state)
+    elif node == Node.SAVE_FILE:
+        return save_file(state)
+    elif node == Node.END:
+        return state, None
+
+
+async def main():
+    """Main function to run the Whimsort application."""
+    initial_state = {
+        "csv_path": None,
+        "has_header": None,
+        "action": None,
+        "new_row": None,
+        "data": [],
+        "header": None,
+    }
+    await amble(initial_state, Node.GET_CSV_PATH, direct)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
